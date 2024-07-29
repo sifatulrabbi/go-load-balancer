@@ -1,0 +1,11 @@
+{
+  "network": "0.0.0.0",
+  "outboundPort": "5000",
+  "serverURIs": [
+    "http://localhost:5001",
+    "http://localhost:5002",
+    "http://localhost:5003"
+  ],
+  "strategy": "round_robin",
+  "maxServerCount": 10
+}
