@@ -1,13 +1,18 @@
 package main
 
 import (
+	"bufio"
+	"bytes"
 	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
 	"log"
 	"net"
+	"net/http"
 	"os"
+
+	loadblancer "github.com/sifatulrabbi/gld/loadbalancer"
 )
 
 type LoadBalancerConfig struct {
@@ -30,8 +35,10 @@ func main() {
 		}
 		cfg = c
 	} else {
-		log.Panicln("'-server' or '-config' is required to run the load balancer.")
+		log.Panicln("'-config' is required to run the load balancer.")
 	}
+
+	ld := loadblancer.New("round_robin", cfg.ServerURIs)
 
 	addr, err := net.ResolveTCPAddr("tcp", fmt.Sprintf("%s:%s", cfg.Network, cfg.OutboundPort))
 	if err != nil {
@@ -48,7 +55,7 @@ func main() {
 			fmt.Println(err)
 			continue
 		}
-		go handleNewConn(conn)
+		go handleNewConn(ld, conn)
 	}
 }
 
@@ -71,17 +78,54 @@ func parseConfigFile(filepath string) (*LoadBalancerConfig, error) {
 	return cfg, nil
 }
 
-func handleNewConn(conn *net.TCPConn) {
+func handleNewConn(ld *loadblancer.LoadBalancer, conn *net.TCPConn) {
 	defer conn.Close()
 	buf := make([]byte, 1024)
-
-	for {
-		_, err := conn.Read(buf)
-		if err != nil {
-			fmt.Println("tcp read error:", err)
-			break
-		}
+	if _, err := conn.Read(buf); err != nil {
+		fmt.Println("tcp read error:", err)
 	}
 
-	fmt.Println(string(buf))
+	inReq, err := http.ReadRequest(bufio.NewReader(bytes.NewReader(buf)))
+	if err != nil {
+		fmt.Println("error while parsing incoming http request. error:", err)
+	}
+
+	if inReq.ProtoMajor != 1 && inReq.ProtoMinor != 1 {
+		log.Fatalf("Incompatible HTTP version. Supported version=1.1, got=%d.%d\n",
+			inReq.ProtoMajor, inReq.ProtoMinor)
+	}
 }
+
+// var outRes bytes.Buffer
+// // the first line that defines the HTTP response status
+// if _, err = outRes.WriteString(fmt.Sprintf("HTTP/%d.%d %d %s\r\n",
+// 	res.ProtoMajor, res.ProtoMinor, res.StatusCode, res.Status)); err != nil {
+// 	log.Panicln(err)
+// }
+// // add all the response headers
+// for k, values := range res.Header {
+// 	valuesStr := ""
+// 	for i := 0; i < len(values); i++ {
+// 		valuesStr += values[i]
+// 		if i < len(values) {
+// 			valuesStr += ", "
+// 		}
+// 	}
+// 	if _, err := outRes.WriteString(fmt.Sprintf("%s: %s\r\n", k, valuesStr)); err != nil {
+// 		log.Panicln(err)
+// 	}
+// }
+// // mandatory line break
+// outRes.WriteString("\r\n")
+// // add the body
+// if res.Body != nil {
+// 	resBody, err := io.ReadAll(res.Body)
+// 	if err != nil {
+// 		log.Panicln(err)
+// 	}
+// 	if _, err = outRes.Write(resBody); err != nil {
+// 		log.Panicln(err)
+// 	}
+// }
+//
+// fmt.Println("response:\n", outRes.String())
