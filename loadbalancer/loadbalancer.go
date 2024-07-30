@@ -3,38 +3,46 @@ package loadbalancer
 import (
 	"errors"
 	"fmt"
-	"log"
 	"net/http"
 	"time"
+)
+
+const (
+	ROUNDED_ROBIN          = "rounded_robin"
+	WEIGHTED_ROUNDED_ROBIN = "weighted_rounded_robin"
 )
 
 type LoadBalancer struct {
 	Name        string
 	ServerList  map[int]ServerEntry
 	serverCount int
-	Strategy    Strategy
 	currIdx     int
 	nextIdx     int
 }
 
-func New(strategyName string, serverURLs []string) *LoadBalancer {
-	strategy, err := NewStrategy(strategyName, serverURLs)
-	if err != nil {
-		log.Panicf("invalid strategy %q\n", strategyName)
-	}
+type ServerEntry struct {
+	Url        string
+	Healthy    bool
+	reqHandled int
+	reqFailed  int
+}
 
+type ServerList map[int]ServerEntry
+
+type strategyFn func(ld *LoadBalancer) *ServerEntry
+
+func New(strategyName string, serverURLs []string) *LoadBalancer {
 	ld := LoadBalancer{
 		Name:        "round_robin",
 		serverCount: len(serverURLs),
 		ServerList:  map[int]ServerEntry{},
-		Strategy:    strategy,
 	}
 	for i, v := range serverURLs {
 		ld.ServerList[i] = ServerEntry{v, true, 0, 0}
 	}
 
 	ld.currIdx = 0
-	ld.nextIdx = ld.currIdx + 1
+	ld.nextIdx = 0
 
 	go ld.periodicHealthCheck()
 
@@ -69,22 +77,12 @@ func (ld *LoadBalancer) ForwardHTTPReq(req *http.Request) (*http.Response, error
 }
 
 func (ld *LoadBalancer) chooseServer() *ServerEntry {
-	ld.currIdx = ld.nextIdx
-	ld.nextIdx = ld.currIdx + 1
-	if ld.nextIdx >= ld.serverCount {
-		ld.nextIdx = 0
+	switch ld.Name {
+	case WEIGHTED_ROUNDED_ROBIN:
+		return weightedRoundRobinStrategy(ld)
+	default:
+		return roundRobinStrategy(ld)
 	}
-
-	currIdx := ld.currIdx
-	s := ld.ServerList[ld.currIdx]
-	for !s.Healthy {
-		s = *ld.chooseServer()
-		if ld.currIdx == currIdx {
-			return nil
-		}
-	}
-
-	return &s
 }
 
 func (ld *LoadBalancer) periodicHealthCheck() {
@@ -93,10 +91,20 @@ func (ld *LoadBalancer) periodicHealthCheck() {
 			req, _ := http.NewRequest(http.MethodGet, fmt.Sprintf("%s/health", s.Url), http.NoBody)
 			res, err := http.DefaultClient.Do(req)
 			if err != nil || res.StatusCode != http.StatusOK {
-				ld.ServerList[i] = ServerEntry{s.Url, false, 0, 0}
+				ld.ServerList[i] = ServerEntry{
+					s.Url,
+					false,
+					s.reqHandled,
+					s.reqFailed,
+				}
 				fmt.Printf("server unhealthy: %q\n", s.Url)
 			} else {
-				ld.ServerList[i] = ServerEntry{s.Url, true, 0, 0}
+				ld.ServerList[i] = ServerEntry{
+					s.Url,
+					true,
+					s.reqHandled,
+					s.reqFailed,
+				}
 			}
 		}
 
