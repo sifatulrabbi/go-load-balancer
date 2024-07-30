@@ -30,7 +30,7 @@ func New(strategyName string, serverURLs []string) *LoadBalancer {
 		Strategy:    strategy,
 	}
 	for i, v := range serverURLs {
-		ld.ServerList[i] = ServerEntry{v, true}
+		ld.ServerList[i] = ServerEntry{v, true, 0, 0}
 	}
 
 	ld.currIdx = 0
@@ -93,10 +93,10 @@ func (ld *LoadBalancer) periodicHealthCheck() {
 			req, _ := http.NewRequest(http.MethodGet, fmt.Sprintf("%s/health", s.Url), http.NoBody)
 			res, err := http.DefaultClient.Do(req)
 			if err != nil || res.StatusCode != http.StatusOK {
-				ld.ServerList[i] = ServerEntry{s.Url, false}
+				ld.ServerList[i] = ServerEntry{s.Url, false, 0, 0}
 				fmt.Printf("server unhealthy: %q\n", s.Url)
 			} else {
-				ld.ServerList[i] = ServerEntry{s.Url, true}
+				ld.ServerList[i] = ServerEntry{s.Url, true, 0, 0}
 			}
 		}
 
