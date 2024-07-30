@@ -1,4 +1,4 @@
-package loadblancer
+package loadbalancer
 
 import (
 	"fmt"
@@ -17,6 +17,7 @@ func New(strategy string, serverURLs []string) *LoadBalancer {
 	ld := LoadBalancer{
 		Name:        "round_robin",
 		serverCount: len(serverURLs),
+		ServerURLs:  make(map[int]string),
 	}
 	for i, v := range serverURLs {
 		ld.ServerURLs[i] = v
@@ -25,28 +26,27 @@ func New(strategy string, serverURLs []string) *LoadBalancer {
 	return &ld
 }
 
-func (ld *LoadBalancer) fwdHTTPReq(req *http.Request) (*http.Response, error) {
+func (ld *LoadBalancer) ForwardHTTPReq(req *http.Request) (*http.Response, error) {
 	forwardingUrl := fmt.Sprintf("%s%s", ld.chooseServer(), req.RequestURI)
-	newReq, err := http.NewRequest(req.Method, forwardingUrl, req.Body)
+	fwdReq, err := http.NewRequest(req.Method, forwardingUrl, req.Body)
 	if err != nil {
 		return nil, err
 	}
 
+	fmt.Printf("forwarding %s to %s\n", req.URL.String(), forwardingUrl)
+
+	// copy over all the headers
 	for k, values := range req.Header {
 		for _, v := range values {
-			newReq.Header.Set(k, v)
+			fwdReq.Header.Set(k, v)
 		}
 	}
-
+	// copy over all the cookies
 	for _, c := range req.Cookies() {
-		newReq.AddCookie(c)
+		fwdReq.AddCookie(c)
 	}
 
-	res, err := http.DefaultClient.Do(newReq)
-	if err != nil {
-		return nil, err
-	}
-	return res, nil
+	return http.DefaultClient.Do(fwdReq)
 }
 
 func (ld *LoadBalancer) chooseServer() string {
