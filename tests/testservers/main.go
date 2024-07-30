@@ -23,6 +23,7 @@ func NewServerGrp(ports []string) *ServerGrp {
 		sg.List[p] = http.NewServeMux()
 	}
 	sg.attachDefaultHandler()
+	sg.attachHealthCheckRoutes()
 	return sg
 }
 
@@ -35,7 +36,24 @@ func (s *ServerGrp) AddNewhHTTPServer(port string) {
 
 func (sg *ServerGrp) attachDefaultHandler() {
 	for k := range sg.List {
-		sg.List[k].HandleFunc("/*", func(w http.ResponseWriter, r *http.Request) {
+		sg.List[k].HandleFunc("/api/*", func(w http.ResponseWriter, r *http.Request) {
+			defer r.Body.Close()
+
+			b, _ := json.Marshal(map[string]any{
+				"message":    fmt.Sprintf("API %s is up and running", k),
+				"statusCode": 200,
+				"success":    true,
+			})
+
+			w.WriteHeader(200)
+			w.Write(b)
+		})
+	}
+}
+
+func (sg *ServerGrp) attachHealthCheckRoutes() {
+	for k := range sg.List {
+		sg.List[k].HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 			defer r.Body.Close()
 
 			b, _ := json.Marshal(map[string]any{

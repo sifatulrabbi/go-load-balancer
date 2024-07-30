@@ -48,7 +48,7 @@ func New(cfg *configs.LoadBalancerConfig, ld *loadbalancer.LoadBalancer) *TCPSer
 
 func (t *TCPServer) Start() {
 	fmt.Printf("starting tcp server at %q\nload balancer strategy %q\nlog type \"dev\"\ninitial servers list %v\n",
-		t.addr.String(), t.LoadBalancer.Name, t.LoadBalancer.ServerURLs)
+		t.addr.String(), t.LoadBalancer.Name, t.LoadBalancer.ServerList)
 
 	for {
 		conn, err := t.listener.AcceptTCP()
@@ -61,7 +61,6 @@ func (t *TCPServer) Start() {
 }
 
 func (t *TCPServer) handleConn(conn *net.TCPConn) {
-	fmt.Println("New connection at")
 	defer conn.Close()
 
 	req, err := t.buildHTTPReqFromConn(conn)
@@ -152,6 +151,6 @@ func (t *TCPServer) encodeHTTPResp(res *http.Response) ([]byte, error) {
 func (t *TCPServer) recordErr(e error) {
 	t.mut.Lock()
 	t.errors = append(t.errors, e)
-	fmt.Printf("error in tcp server %s\n", e.Error())
+	fmt.Printf("Error in tcp server %s\n", e.Error())
 	t.mut.Unlock()
 }
