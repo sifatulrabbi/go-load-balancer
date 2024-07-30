@@ -22,7 +22,10 @@ func New(strategy string, serverURLs []string) *LoadBalancer {
 	for i, v := range serverURLs {
 		ld.ServerURLs[i] = v
 	}
-	ld.nextIdx = 0
+
+	ld.currIdx = 0
+	ld.nextIdx = ld.currIdx + 1
+
 	return &ld
 }
 
@@ -50,10 +53,11 @@ func (ld *LoadBalancer) ForwardHTTPReq(req *http.Request) (*http.Response, error
 }
 
 func (ld *LoadBalancer) chooseServer() string {
-	if ld.nextIdx+1 >= ld.serverCount {
-		ld.currIdx = 0
-	}
+	ld.currIdx = ld.nextIdx
 	ld.nextIdx = ld.currIdx + 1
+	if ld.nextIdx >= ld.serverCount {
+		ld.nextIdx = 0
+	}
 
 	return ld.ServerURLs[ld.currIdx]
 }
