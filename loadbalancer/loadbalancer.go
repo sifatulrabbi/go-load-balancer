@@ -3,28 +3,31 @@ package loadbalancer
 import (
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"time"
 )
-
-type ServerEntry struct {
-	Url     string
-	Healthy bool
-}
 
 type LoadBalancer struct {
 	Name        string
 	ServerList  map[int]ServerEntry
 	serverCount int
+	Strategy    Strategy
 	currIdx     int
 	nextIdx     int
 }
 
-func New(strategy string, serverURLs []string) *LoadBalancer {
+func New(strategyName string, serverURLs []string) *LoadBalancer {
+	strategy, err := NewStrategy(strategyName, serverURLs)
+	if err != nil {
+		log.Panicf("invalid strategy %q\n", strategyName)
+	}
+
 	ld := LoadBalancer{
 		Name:        "round_robin",
 		serverCount: len(serverURLs),
 		ServerList:  map[int]ServerEntry{},
+		Strategy:    strategy,
 	}
 	for i, v := range serverURLs {
 		ld.ServerList[i] = ServerEntry{v, true}
