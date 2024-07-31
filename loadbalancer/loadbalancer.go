@@ -21,6 +21,7 @@ type LoadBalancer struct {
 }
 
 type ServerEntry struct {
+	ID         int
 	Url        string
 	Healthy    bool
 	reqHandled int
@@ -38,7 +39,7 @@ func New(strategyName string, serverURLs []string) *LoadBalancer {
 		ServerList:  map[int]ServerEntry{},
 	}
 	for i, v := range serverURLs {
-		ld.ServerList[i] = ServerEntry{v, true, 0, 0}
+		ld.ServerList[i] = ServerEntry{i, v, true, 0, 0}
 	}
 
 	ld.currIdx = 0
@@ -73,7 +74,13 @@ func (ld *LoadBalancer) ForwardHTTPReq(req *http.Request) (*http.Response, error
 		fwdReq.AddCookie(c)
 	}
 
-	return http.DefaultClient.Do(fwdReq)
+	res, err := http.DefaultClient.Do(fwdReq)
+	if err != nil {
+		ld.updateServerStatus(s.ID, false)
+		return nil, err
+	}
+	ld.updateServerStatus(s.ID, true)
+	return res, nil
 }
 
 func (ld *LoadBalancer) chooseServer() *ServerEntry {
@@ -92,6 +99,7 @@ func (ld *LoadBalancer) periodicHealthCheck() {
 			res, err := http.DefaultClient.Do(req)
 			if err != nil || res.StatusCode != http.StatusOK {
 				ld.ServerList[i] = ServerEntry{
+					s.ID,
 					s.Url,
 					false,
 					s.reqHandled,
@@ -100,6 +108,7 @@ func (ld *LoadBalancer) periodicHealthCheck() {
 				fmt.Printf("server unhealthy: %q\n", s.Url)
 			} else {
 				ld.ServerList[i] = ServerEntry{
+					s.ID,
 					s.Url,
 					true,
 					s.reqHandled,
@@ -110,4 +119,21 @@ func (ld *LoadBalancer) periodicHealthCheck() {
 
 		time.Sleep(time.Minute * 1)
 	}
+}
+
+func (ld *LoadBalancer) updateServerStatus(id int, success bool) {
+	s := ld.ServerList[id]
+	newEntry := ServerEntry{
+		ID:         id,
+		Url:        s.Url,
+		Healthy:    s.Healthy,
+		reqHandled: s.reqHandled,
+		reqFailed:  s.reqFailed,
+	}
+	if success {
+		newEntry.reqHandled++
+	} else {
+		newEntry.reqFailed++
+	}
+	ld.ServerList[id] = newEntry
 }
